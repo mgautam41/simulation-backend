@@ -1,0 +1,20 @@
+{
+  "serverStartedAt": "2026-03-31T17:24:43.535Z",
+  "totalActions": 0,
+  "byType": {
+    "login": 0,
+    "logout": 0,
+    "post": 0,
+    "like": 0,
+    "unlike": 0,
+    "comment": 0,
+    "save": 0,
+    "follow": 0,
+    "unfollow": 0,
+    "profile_view": 0,
+    "search": 0
+  },
+  "errors": 0,
+  "activeUsers": 0,
+  "registeredNewUsers": 0
+}
