@@ -26,13 +26,15 @@ import {
 import { getActivity, getSessions, getStats } from "../lib/logger.js";
 import { ALL_USERS, EXISTING_USERS, NEW_USERS } from "../data/users.js";
 import { updateConfig } from "../lib/simulationEngine.js";
+import fs from "fs";
+import path from "path";
 
 import fetch from "node-fetch";
 import FormData from "form-data";
 
 const router = Router();
 
-// ── Auto-follow toggle state and logic ───────────────────────────────────────
+// ── Auto-follow toggle state and logic
 let autoFollowInterval = null;
 let autoFollowActive = false;
 
@@ -42,12 +44,25 @@ function getCelebrityUserIds() {
   const celebrities = ALL_USERS.filter(
     (u) => u.tier === 0 || u.tierLabel === "influencer",
   );
-  // If no tier, fallback to top 3 by followers
   if (celebrities.length > 0) return celebrities.map((u) => u.userId);
-  // fallback: sort by followers (if present)
   return ALL_USERS.sort((a, b) => (b.followers ?? 0) - (a.followers ?? 0))
     .slice(0, 3)
     .map((u) => u.userId);
+}
+
+function logAutoFollow(entry) {
+  const logPath = path.join(process.cwd(), "logs", "auto-follow.json");
+  let logs = [];
+  try {
+    if (fs.existsSync(logPath)) {
+      logs = JSON.parse(fs.readFileSync(logPath, "utf8"));
+    }
+  } catch (e) {
+    logs = [];
+  }
+  logs.unshift(entry); // newest first
+  if (logs.length > 1000) logs = logs.slice(0, 1000);
+  fs.writeFileSync(logPath, JSON.stringify(logs, null, 2));
 }
 
 // Helper: create a new user, update profile image, and follow celebrities
@@ -60,37 +75,50 @@ async function createAndFollowCelebrities() {
   const name = `AutoUser ${uuid}`;
   const bio = "Auto-created user";
   const gender = "other";
+  const logEntry = {
+    timestamp: new Date().toISOString(),
+    username,
+    email,
+    actions: [],
+  };
   const phone = "9999999999";
 
   // 2. Signup user
-  const signupRes = await fetch(
-    "https://snaplink-android-app-backend.vercel.app/api/users/signup",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name,
-        username,
-        email,
-        password,
-        phone,
-        bio,
-        gender,
-      }),
-    },
-  );
   let signupData;
   try {
-    signupData = await signupRes.json();
-  } catch (e) {
-    console.error("[auto-follow] Signup response not JSON", e);
-    return;
-  }
-  if (!signupRes.ok || !signupData.success || !signupData.token) {
-    console.error(
-      `[auto-follow] Signup failed for ${username}:`,
-      signupData?.message || signupData,
+    const signupRes = await fetch(
+      "https://snaplink-android-app-backend.vercel.app/api/users/signup",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          username,
+          email,
+          password,
+          phone,
+          bio,
+          gender,
+        }),
+      },
     );
+    signupData = await signupRes.json();
+    logEntry.actions.push({
+      step: "signup",
+      status: signupRes.ok && signupData.success ? "ok" : "fail",
+      response: signupData,
+    });
+    if (!signupRes.ok || !signupData.success || !signupData.token) {
+      logAutoFollow(logEntry);
+      return;
+    }
+  } catch (e) {
+    logEntry.actions.push({
+      step: "signup",
+      status: "error",
+      error: e.message,
+    });
+    logAutoFollow(logEntry);
     return;
   }
   const token = signupData.token;
@@ -118,14 +146,17 @@ async function createAndFollowCelebrities() {
       },
     );
     const updateData = await updateRes.json();
-    if (!updateRes.ok || !updateData.success) {
-      console.error(
-        `[auto-follow] Profile image update failed for ${username}:`,
-        updateData?.message || updateData,
-      );
-    }
+    logEntry.actions.push({
+      step: "update-profile-img",
+      status: updateRes.ok && updateData.success ? "ok" : "fail",
+      response: updateData,
+    });
   } catch (err) {
-    console.error(`[auto-follow] Profile image error for ${username}:`, err);
+    logEntry.actions.push({
+      step: "update-profile-img",
+      status: "error",
+      error: err.message,
+    });
   }
 
   // 4. Follow celebrities
@@ -144,24 +175,22 @@ async function createAndFollowCelebrities() {
         },
       );
       const followData = await followRes.json();
-      if (!followRes.ok || !followData.success) {
-        console.error(
-          `[auto-follow] Follow failed for ${username} -> ${celebId}:`,
-          followData?.message || followData,
-        );
-      }
+      logEntry.actions.push({
+        step: "follow",
+        celebId,
+        status: followRes.ok && followData.success ? "ok" : "fail",
+        response: followData,
+      });
     } catch (err) {
-      console.error(
-        `[auto-follow] Follow error for ${username} -> ${celebId}:`,
-        err,
-      );
+      logEntry.actions.push({
+        step: "follow",
+        celebId,
+        status: "error",
+        error: err.message,
+      });
     }
   }
-  // Do not log or persist this user locally
-  console.log(
-    `[auto-follow] Created user ${username}, updated avatar, followed:`,
-    celebIds,
-  );
+  logAutoFollow(logEntry);
 }
 
 // ── Toggle auto-follow route ────────────────────────────────────────────────
@@ -246,6 +275,19 @@ router.get("/sessions", (req, res) => {
     count: sessions.activeSessions?.length ?? 0,
     timestamp: new Date().toISOString(),
   });
+});
+// ── Auto-follow log viewer ─────────────────────────────────────────────────--
+router.get("/auto-follow-log", (req, res) => {
+  const logPath = path.join(process.cwd(), "logs", "auto-follow.json");
+  let logs = [];
+  try {
+    if (fs.existsSync(logPath)) {
+      logs = JSON.parse(fs.readFileSync(logPath, "utf8"));
+    }
+  } catch (e) {
+    logs = [];
+  }
+  res.json({ total: logs.length, logs });
 });
 
 // ── Stats ─────────────────────────────────────────────────────────────────────
