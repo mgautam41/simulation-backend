@@ -81,7 +81,11 @@ async function createAndFollowCelebrities() {
     email,
     actions: [],
   };
-  const phone = "9999999999";
+  // Generate a unique random 10-digit phone number (not starting with 0)
+  const phone = (() => {
+    let num = Math.floor(1000000000 + Math.random() * 9000000000);
+    return num.toString();
+  })();
 
   // 2. Signup user
   let signupData;
