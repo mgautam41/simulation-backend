@@ -29,7 +29,6 @@ import { updateConfig } from "../lib/simulationEngine.js";
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
-
 import fetch from "node-fetch";
 import FormData from "form-data";
 
@@ -61,14 +60,14 @@ function logAutoFollow(entry) {
   } catch (e) {
     logs = [];
   }
-  logs.unshift(entry); // newest first
+  logs.unshift(entry);
   if (logs.length > 1000) logs = logs.slice(0, 1000);
   fs.writeFileSync(logPath, JSON.stringify(logs, null, 2));
 }
 
 // ── Generate guaranteed-unique credentials on every call
 function generateUniqueCredentials() {
-  const timestamp = Date.now(); // ms since epoch — always unique
+  const timestamp = Date.now();
   const randomPart = crypto
     .randomBytes(4)
     .readUInt32BE(0)
@@ -138,7 +137,6 @@ async function createAndFollowCelebrities() {
 
   // 2. Update profile image
   try {
-    // Cache-busted so every user gets a different avatar
     const avatarUrl = `https://i.pravatar.cc/150?u=${username}&t=${Date.now()}`;
     const imgRes = await fetch(avatarUrl);
     if (!imgRes.ok) throw new Error("Failed to fetch avatar image");
@@ -187,7 +185,6 @@ async function createAndFollowCelebrities() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          // No body needed — username is in the URL
         }
       );
       const followData = await followRes.json();
@@ -214,7 +211,7 @@ async function createAndFollowCelebrities() {
 router.post("/toggle-auto-follow", async (req, res) => {
   if (!autoFollowActive) {
     autoFollowActive = true;
-    autoFollowInterval = setInterval(createAndFollowCelebrities, 5000); // every 5s
+    autoFollowInterval = setInterval(createAndFollowCelebrities, 5000);
     res.json({
       success: true,
       started: true,
