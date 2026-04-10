@@ -126,7 +126,7 @@ async function createAndFollowCelebrities() {
   let signupData;
   try {
     const signupRes = await fetch(
-      "https://snaplink-android-app-backend.vercel.app/api/users/signup",
+      "http://3.110.165.205:5000/api/users/signup",
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -178,7 +178,7 @@ async function createAndFollowCelebrities() {
     });
 
     const updateRes = await fetch(
-      "https://snaplink-android-app-backend.vercel.app/api/users/update-profile-img",
+      "http://3.110.165.205:5000/api/users/update-profile-img",
       {
         method: "PUT",
         headers: {
@@ -207,7 +207,7 @@ async function createAndFollowCelebrities() {
   for (const celebUsername of celebUsernames) {
     try {
       const followRes = await fetch(
-        `https://snaplink-android-app-backend.vercel.app/api/users/follow/${celebUsername}`,
+        `http://3.110.165.205:5000/api/users/follow/${celebUsername}`,
         {
           method: "POST",
           headers: {
