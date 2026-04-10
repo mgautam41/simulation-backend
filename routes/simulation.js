@@ -1,18 +1,5 @@
 /**
  * routes/simulation.js — REST API routes for the simulation server.
- *
- * All routes are mounted at /api/sim in server.js.
- *
- * POST /api/sim/start           — Start the simulation engine
- * POST /api/sim/stop            — Stop the simulation engine
- * POST /api/sim/pause           — Pause all user loops
- * POST /api/sim/resume          — Resume paused loops
- * GET  /api/sim/status          — Engine status + config
- * GET  /api/sim/logs            — Latest activity log (query: limit, type)
- * GET  /api/sim/sessions        — Currently online virtual users
- * GET  /api/sim/stats           — Rolling counters
- * GET  /api/sim/users           — Full user roster
- * PATCH /api/sim/config         — Update engine config at runtime
  */
 
 import { Router } from "express";
@@ -41,7 +28,7 @@ let autoFollowActive = false;
 // ── Get celebrity usernames (tier 0 / influencer)
 function getCelebrityUsernames() {
   const celebrities = ALL_USERS.filter(
-    (u) => u.tier === 0 || u.tierLabel === "influencer"
+    (u) => u.tier === 0 || u.tierLabel === "influencer",
   );
   if (celebrities.length > 0) return celebrities.map((u) => u.username);
   return ALL_USERS.sort((a, b) => (b.followers ?? 0) - (a.followers ?? 0))
@@ -65,44 +52,73 @@ function logAutoFollow(entry) {
   fs.writeFileSync(logPath, JSON.stringify(logs, null, 2));
 }
 
-// ── Generate guaranteed-unique credentials on every call
-function generateUniqueCredentials() {
+// ── Fetch genuine random user from randomuser.me API
+async function generateUniqueCredentials() {
   const timestamp = Date.now();
   const randomPart = crypto
     .randomBytes(4)
     .readUInt32BE(0)
     .toString(36)
-    .padStart(7, "0");
-  const uuid = `${timestamp.toString(36)}${randomPart}`;
+    .padStart(5, "0");
 
-  const username = `auto_${uuid}`;
-  const email = `${username}@snaplink.dev`;
-  const password = `Auto!${uuid.slice(0, 8)}@123`;
-  const name = `AutoUser ${uuid.slice(0, 6)}`;
-
-  // Guaranteed unique 10-digit phone (no leading 0)
+  // Unique 10-digit phone (no leading 0)
   const phone = (() => {
     const tsPart = (timestamp % 900000000).toString().padStart(9, "0");
-    const randDigit = Math.floor(1 + Math.random() * 8); // 1–8
+    const randDigit = Math.floor(1 + Math.random() * 8);
     return `${randDigit}${tsPart}`;
   })();
 
-  return { uuid, username, email, password, name, phone };
+  try {
+    // Fetch a real random person from randomuser.me
+    const res = await fetch("https://randomuser.me/api/?nat=in,us,gb,au");
+    const data = await res.json();
+    const person = data.results[0];
+
+    const firstName = person.name.first.toLowerCase().replace(/\s+/g, "");
+    const lastName = person.name.last.toLowerCase().replace(/\s+/g, "");
+    const fullName = `${person.name.first} ${person.name.last}`;
+    const gender = person.gender; // "male" or "female"
+
+    // e.g. john_smith_a3f2
+    const username = `${firstName}_${lastName}_${randomPart}`;
+    // e.g. john.smith_a3f2@snaplink.demouser
+    const email = `${firstName}.${lastName}_${randomPart}@snaplink.demouser`;
+    const password = `Demo!${randomPart}@${timestamp.toString(36).slice(-4)}`;
+    const bio = `Hi, I'm ${person.name.first}! 👋`;
+
+    return { username, email, password, name: fullName, phone, bio, gender };
+  } catch (err) {
+    // Fallback if randomuser.me is unreachable
+    console.warn(
+      "[generateUniqueCredentials] randomuser.me failed, using fallback:",
+      err.message,
+    );
+    const username = `user_${timestamp.toString(36)}${randomPart}`;
+    const email = `${username}@snaplink.demouser`;
+    const password = `Demo!${randomPart}@123`;
+    return {
+      username,
+      email,
+      password,
+      name: `Demo User`,
+      phone,
+      bio: "Auto-created demo user",
+      gender: "other",
+    };
+  }
 }
 
 // ── Core: create one new user and follow all celebrities
 async function createAndFollowCelebrities() {
-  const { uuid, username, email, password, name, phone } =
-    generateUniqueCredentials();
-
-  const bio = "Auto-created user";
-  const gender = "other";
+  const { username, email, password, name, phone, bio, gender } =
+    await generateUniqueCredentials();
 
   const logEntry = {
     timestamp: new Date().toISOString(),
     username,
     email,
     phone,
+    name,
     actions: [],
   };
 
@@ -114,8 +130,16 @@ async function createAndFollowCelebrities() {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, username, email, password, phone, bio, gender }),
-      }
+        body: JSON.stringify({
+          name,
+          username,
+          email,
+          password,
+          phone,
+          bio,
+          gender,
+        }),
+      },
     );
     signupData = await signupRes.json();
     logEntry.actions.push({
@@ -128,7 +152,11 @@ async function createAndFollowCelebrities() {
       return;
     }
   } catch (e) {
-    logEntry.actions.push({ step: "signup", status: "error", error: e.message });
+    logEntry.actions.push({
+      step: "signup",
+      status: "error",
+      error: e.message,
+    });
     logAutoFollow(logEntry);
     return;
   }
@@ -137,6 +165,7 @@ async function createAndFollowCelebrities() {
 
   // 2. Update profile image
   try {
+    // Use username as pravatar seed for consistent unique avatar
     const avatarUrl = `https://i.pravatar.cc/150?u=${username}&t=${Date.now()}`;
     const imgRes = await fetch(avatarUrl);
     if (!imgRes.ok) throw new Error("Failed to fetch avatar image");
@@ -157,7 +186,7 @@ async function createAndFollowCelebrities() {
           Authorization: `Bearer ${token}`,
         },
         body: form,
-      }
+      },
     );
     const updateData = await updateRes.json();
     logEntry.actions.push({
@@ -185,7 +214,7 @@ async function createAndFollowCelebrities() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-        }
+        },
       );
       const followData = await followRes.json();
       logEntry.actions.push({
