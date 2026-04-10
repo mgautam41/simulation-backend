@@ -66,26 +66,44 @@ function logAutoFollow(entry) {
 }
 
 // Helper: create a new user, update profile image, and follow celebrities
-async function createAndFollowCelebrities() {
-  // 1. Generate random credentials
-  const uuid = Math.random().toString(36).slice(2, 10);
+function generateUniqueCredentials() {
+  const timestamp = Date.now(); // ms since epoch — always unique
+  const randomPart = crypto
+    .getRandomValues(new Uint32Array(1))[0]
+    .toString(36)
+    .padStart(7, "0");
+  const uuid = `${timestamp.toString(36)}${randomPart}`;
+
   const username = `auto_${uuid}`;
   const email = `${username}@snaplink.dev`;
-  const password = `Auto!${uuid}@123`;
-  const name = `AutoUser ${uuid}`;
+  const password = `Auto!${uuid.slice(0, 8)}@123`;
+  const name = `AutoUser ${uuid.slice(0, 6)}`;
+
+  // Guaranteed unique 10-digit phone (no leading 0)
+  const phone = (() => {
+    const tsPart = (timestamp % 900000000).toString().padStart(9, "0");
+    const randDigit = Math.floor(1 + Math.random() * 8); // 1-8 for first digit
+    return `${randDigit}${tsPart}`;
+  })();
+
+  return { uuid, username, email, password, name, phone };
+}
+
+async function createAndFollowCelebrities() {
+  // 1. Generate unique credentials every single call
+  const { uuid, username, email, password, name, phone } =
+    generateUniqueCredentials();
+
   const bio = "Auto-created user";
   const gender = "other";
+
   const logEntry = {
     timestamp: new Date().toISOString(),
     username,
     email,
+    phone,
     actions: [],
   };
-  // Generate a unique random 10-digit phone number (not starting with 0)
-  const phone = (() => {
-    let num = Math.floor(1000000000 + Math.random() * 9000000000);
-    return num.toString();
-  })();
 
   // 2. Signup user
   let signupData;
@@ -125,19 +143,23 @@ async function createAndFollowCelebrities() {
     logAutoFollow(logEntry);
     return;
   }
+
   const token = signupData.token;
 
   // 3. Update profile image
   try {
-    const avatarUrl = `https://i.pravatar.cc/150?u=${username}`;
+    // Cache-busted avatar URL — different image per user
+    const avatarUrl = `https://i.pravatar.cc/150?u=${username}&t=${Date.now()}`;
     const imgRes = await fetch(avatarUrl);
     if (!imgRes.ok) throw new Error("Failed to fetch avatar image");
+
     const buffer = await imgRes.buffer();
     const form = new FormData();
     form.append("image", buffer, {
       filename: `${username}_avatar.jpg`,
       contentType: "image/jpeg",
     });
+
     const updateRes = await fetch(
       "https://snaplink-android-app-backend.vercel.app/api/users/update-profile-img",
       {
@@ -194,6 +216,7 @@ async function createAndFollowCelebrities() {
       });
     }
   }
+
   logAutoFollow(logEntry);
 }
 
