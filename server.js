@@ -63,6 +63,8 @@ app.get("/", (req, res) => {
       "GET  /api/sim/stats": "Rolling action counters",
       "GET  /api/sim/users": "User roster (?tier=influencer)",
       "PATCH /api/sim/config": "Update engine config live",
+      "POST /api/sim/toggle-auto-follow":
+        "Toggle auto-create new users and follow celebrities (start/stop)",
     },
     timestamp: new Date().toISOString(),
   });
@@ -91,7 +93,9 @@ app.listen(PORT, () => {
   const trackerPosts = loadTrackerPosts();
   if (trackerPosts.length) {
     seedPostCache(trackerPosts);
-    console.log(`\n📦 Seeded ${trackerPosts.length} posts from tracker/posts.json into post cache`);
+    console.log(
+      `\n📦 Seeded ${trackerPosts.length} posts from tracker/posts.json into post cache`,
+    );
   }
 
   console.log(`\n${"═".repeat(60)}`);
@@ -99,7 +103,9 @@ app.listen(PORT, () => {
   console.log(`   Listening on  : http://localhost:${PORT}`);
   console.log(`   Start sim     : POST http://localhost:${PORT}/api/sim/start`);
   console.log(`   Live logs     : GET  http://localhost:${PORT}/api/sim/logs`);
-  console.log(`   Live sessions : GET  http://localhost:${PORT}/api/sim/sessions`);
+  console.log(
+    `   Live sessions : GET  http://localhost:${PORT}/api/sim/sessions`,
+  );
   console.log(`   Health        : GET  http://localhost:${PORT}/health`);
   console.log(`${"═".repeat(60)}\n`);
   console.log(`💡 Tip: Send POST /api/sim/start to begin the simulation.\n`);
