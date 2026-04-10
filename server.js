@@ -34,7 +34,7 @@ import { loadTrackerPosts } from "./scripts/seedPostCache.js";
 dotenv.config();
 
 const __dir = path.dirname(fileURLToPath(import.meta.url));
-const PORT = process.env.SIM_PORT ?? 1912;
+const PORT = process.env.SIM_PORT ?? 8080;
 
 const app = express();
 
